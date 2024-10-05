@@ -1,0 +1,72 @@
+---
+- name: Setup cri-dockerd
+  hosts: all
+  become: true
+  tasks:
+    - name: Enable net.bridge.bridge-nf-call-iptables
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: '1'
+        state: present
+        reload: yes
+
+    - name: Download cri-dockerd binary
+      get_url:
+        url: https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.14/cri-dockerd-0.3.14.amd64.tgz
+        dest: /tmp/cri-dockerd-0.3.14.amd64.tgz
+
+    - name: Extract cri-dockerd
+      unarchive:
+        src: /tmp/cri-dockerd-0.3.14.amd64.tgz
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Install cri-dockerd binary
+      copy:
+        src: /tmp/cri-dockerd/cri-dockerd
+        dest: /usr/local/bin/cri-dockerd
+        owner: root
+        group: root
+        mode: '0755'
+        remote_src: yes
+
+     - name: Download cri-dockerd systemd files
+      get_url:
+        url: https://github.com/Mirantis/cri-dockerd/archive/refs/tags/v0.3.14.tar.gz
+        dest: /tmp/cri-dockerd-0.3.14.tar.gz
+
+    - name: Extract cri-dockerd systemd files
+      unarchive:
+        src: /tmp/cri-dockerd-0.3.14.tar.gz
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Copy cri-dockerd systemd files
+      copy:
+        src: "{{ item }}"
+        dest: /etc/systemd/system/
+        remote_src: yes
+      loop:
+        - /tmp/cri-dockerd-0.3.14/packaging/systemd/cri-docker.service
+        - /tmp/cri-dockerd-0.3.14/packaging/systemd/cri-docker.socket
+
+    - name: Update cri-docker service file
+      lineinfile:
+        path: /etc/systemd/system/cri-docker.service
+        regexp: '^ExecStart=.*'
+        line: 'ExecStart=/usr/local/bin/cri-dockerd'
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+
+    - name: Enable and start cri-docker.socket
+      systemd:
+        name: cri-docker.socket
+        enabled: true
+        state: started
+
+    - name: Enable and start cri-docker
+      systemd:
+        name: cri-docker
+        enabled: true
+        state: started
